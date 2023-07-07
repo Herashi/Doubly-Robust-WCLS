@@ -1,0 +1,435 @@
+---
+title: "Analysis"
+output: html_document
+date: '2022-10-20'
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(geepack)
+library(dplyr)
+library(glmtoolbox)
+library(ggplot2)
+library(splines)
+library(foreach)
+library(parallel)
+library(doParallel)
+setwd("~/Documents/DML-WCLS/Case Study")
+library(stringr)
+# load("data_XGBoost.RData")
+load("data_rf_mood.RData")
+
+centering_par = aggregate(MOOD_pred~study_week, data = data, mean)
+colnames(centering_par)[2] = "centering_par"
+data = left_join(data, centering_par, by = "study_week")
+data$MOODpred_c = data$MOOD_pred - data$centering_par
+
+# load("data_lasso.RData")
+```
+
+## Marginal
+
+#### WCLS
+
+```{r}
+######## WCLS
+
+# Cov_set = c(colnames(data)[c(7:17)])
+Cov_set = c("depr0","MOODprev","Neu0" )
+Control_var = paste0(Cov_set, collapse = " + ",sep = "")
+
+
+gee_result_mood = geeglm(as.formula(paste0("MOOD ~ week_category_new_c + study_week + ", Control_var)),
+                         data = data ,weights = w, id = UserID, scale.fix = T)
+summary(gee_result_mood)
+
+bool_gee = str_detect(names(coef(gee_result_mood)),"week_category_new")
+coef_gee = coef(gee_result_mood)[bool_gee]
+vcov_gee = vcov(gee_result_mood)[bool_gee,bool_gee]
+
+
+df_gee = data.frame(Moodchange= coef_gee,
+                    SE = sqrt(vcov_gee ),
+                    Method = "WCLS")
+```
+
+#### R-WCLS
+
+```{r}
+fit_MOOD = geeglm(MOOD_minus ~ I(week_category_new - pn), id= UserID, weights = weights, data = data, scale.fix = T )
+
+summary(fit_MOOD)
+
+bool_gee = str_detect(names(coef(fit_MOOD)),"week_category_new")
+coef_gee = coef(fit_MOOD)[bool_gee]
+vcov_gee = vcov(fit_MOOD)[bool_gee,bool_gee]
+
+
+df_r = data.frame(Moodchange= coef_gee,
+                    SE = sqrt(vcov_gee),
+                    Method = "R-WCLS")
+```
+
+#### DR-WCLS
+
+```{r}
+fit_MOOD = geeglm(MOOD_DR ~ 1, id= UserID, weights = weights_DR, data = data, scale.fix = T )
+
+summary(fit_MOOD)
+
+coef_gee = coef(fit_MOOD)
+vcov_gee = vcov(fit_MOOD)
+
+
+df_dr = data.frame( Moodchange= coef_gee,
+                    SE = sqrt(unname(vcov_gee)),
+                    Method = "DR-WCLS")
+```
+
+#### A2+ R-WCLS
+
+```{r}
+fit_MOOD = geeglm(MOOD_minus ~ I(week_category_new - pn)* MOODpred_c, id= UserID, weights = weights, data = data, scale.fix = T )
+
+summary(fit_MOOD)
+
+# bool_gee = str_detect(names(coef(fit_MOOD)),"week_category_new")
+bool_gee = c(F,T,F, F)
+coef_gee = coef(fit_MOOD)[bool_gee]
+vcov_gee = vcov(fit_MOOD)[bool_gee,bool_gee]
+
+
+df_a2r = data.frame(Moodchange= coef_gee,
+                    SE = sqrt(vcov_gee),
+                    Method = "A2 + R-WCLS")
+```
+
+#### Combine together
+
+```{r echo=FALSE}
+df = rbind(df_gee,df_r,df_dr,df_a2r)
+df
+```
+
+## Time-varying : Cubic Spline
+
+#### WCLS
+
+```{r}
+######## WCLS
+
+gee_result_mood = geeglm(as.formula(paste0("MOOD ~ week_category_new_c * bs(study_week, df=6) + ", Control_var)),
+                         data = data,weights = w, id = UserID, scale.fix = T)
+summary(gee_result_mood)
+
+bool_gee = str_detect(names(coef(gee_result_mood)),"week_category_new")
+coef_gee = coef(gee_result_mood)[bool_gee]
+vcov_gee = vcov(gee_result_mood)[bool_gee,bool_gee]
+bs_func = cbind(1,predict(bs(data$study_week,df=6), newx = 1:26))
+
+df_gee = data.frame(studyweek = 1:26,
+                    Moodchange= bs_func %*% coef_gee,
+                    SE = sqrt(diag(bs_func %*% vcov_gee %*% t(bs_func))))
+```
+
+#### R-WCLS
+
+```{r}
+fit_MOOD = geeglm(MOOD_minus ~ I(week_category_new - pn) * bs(study_week, df=6), 
+                  id= UserID, weights = weights, data = data, scale.fix = T )
+
+summary(fit_MOOD)
+
+bool_gee = str_detect(names(coef(fit_MOOD)),"week_category_new")
+coef_gee = coef(fit_MOOD)[bool_gee]
+vcov_gee = vcov(fit_MOOD)[bool_gee,bool_gee]
+
+df_r = data.frame(studyweek = 1:26,
+                  Moodchange= bs_func %*% coef_gee,
+                  SE = sqrt(diag(bs_func %*% vcov_gee %*% t(bs_func))))
+```
+
+#### DR-WCLS
+
+```{r}
+fit_MOOD = geeglm(MOOD_DR ~ bs(study_week, df=6), id= UserID, weights = weights_DR, data = data, scale.fix = T )
+
+summary(fit_MOOD)
+
+coef_gee = coef(fit_MOOD)
+vcov_gee = vcov(fit_MOOD)
+
+df_dr = data.frame(studyweek = 1:26,
+                   Moodchange= bs_func %*% coef_gee,
+                   SE = sqrt(diag(bs_func %*% vcov_gee %*% t(bs_func))))
+```
+
+#### Combine together
+
+```{r echo=FALSE}
+
+df = rbind(df_gee,df_r)
+df$Method = rep(c("WCLS","R-WCLS"), each = 26)
+
+p<-ggplot(data=df, aes(x=studyweek, y=Moodchange,colour=Method)) +
+  geom_line()+
+  geom_ribbon(aes(ymin=Moodchange-1.96*SE, ymax=Moodchange+1.96*SE), linetype=2, alpha=0.1)+
+  xlab("Study Week")+
+  ylab("Causal Effect on Mood Scores")+
+  theme_bw()+
+  scale_color_brewer(palette="Paired",direction = -1)+
+  theme(axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  geom_hline(yintercept =0, linetype=2)+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+p
+
+
+
+df = rbind(df_gee,df_dr)
+df$Method = rep(c("WCLS","DR-WCLS"), each = 26)
+
+p<-ggplot(data=df, aes(x=studyweek, y=Moodchange,colour=Method)) +
+  geom_line()+
+  geom_ribbon(aes(ymin=Moodchange-1.96*SE, ymax=Moodchange+1.96*SE), linetype=2, alpha=0.1)+
+  xlab("Study Week")+
+  ylab("Causal Effect on Mood Scores")+
+  theme_bw()+
+  scale_color_brewer(palette="Paired",direction = -1)+
+  theme(axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  geom_hline(yintercept =0, linetype=2)+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+p
+
+
+df = rbind(df_gee,df_r,df_dr)
+df_re = data.frame(RE = c(df[1:26,3]^2/df[27:52,3]^2,df[1:26,3]^2/df[53:78,3]^2),
+                   studyweek = rep(1:26, times =2),
+                   Method = rep(c("R-WCLS","DR-WCLS"), each = 26))
+
+p<-ggplot(data=df_re, aes(x=studyweek, y=RE,colour=Method)) +
+  geom_line()+
+  xlab("Study Week")+
+  ylab("Relative Efficiency")+
+  theme_bw()+
+  theme(axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  geom_hline(yintercept =1, linetype=2)+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+p
+
+
+```
+
+## Time-varying : Linear Model
+
+#### WCLS
+
+```{r}
+######## WCLS
+
+gee_result_mood = geeglm(as.formula(paste0("MOOD ~ week_category_new_c * study_week + ", Control_var)),
+                         data = data , weights = w,id = UserID, scale.fix = T)
+summary(gee_result_mood)
+
+bool_gee = str_detect(names(coef(gee_result_mood)),"week_category_new")
+coef_gee = coef(gee_result_mood)[bool_gee]
+vcov_gee = vcov(gee_result_mood)[bool_gee,bool_gee]
+bs_func = cbind(1,1:26)
+
+df_gee = data.frame(studyweek = 1:26,
+                    Moodchange= bs_func %*% coef_gee,
+                    SE = sqrt(diag(bs_func %*% vcov_gee %*% t(bs_func))))
+```
+
+#### R-WCLS
+
+```{r}
+
+fit_MOOD = geeglm(MOOD_minus ~ I(week_category_new - pn) * study_week, 
+                  id= UserID, weights = weights, data = data, scale.fix = T )
+
+summary(fit_MOOD)
+
+bool_gee = str_detect(names(coef(fit_MOOD)),"week_category_new")
+coef_gee = coef(fit_MOOD)[bool_gee]
+vcov_gee = vcov(fit_MOOD)[bool_gee,bool_gee]
+
+df_r = data.frame(studyweek = 1:26,
+                  Moodchange= bs_func %*% coef_gee,
+                  SE = sqrt(diag(bs_func %*% vcov_gee %*% t(bs_func))))
+```
+
+#### DR-WCLS
+
+```{r}
+fit_MOOD = geeglm(MOOD_DR ~ study_week, id= UserID, weights = weights_DR, data = data, scale.fix = T )
+
+summary(fit_MOOD)
+
+coef_gee = coef(fit_MOOD)
+vcov_gee = vcov(fit_MOOD)
+
+df_dr = data.frame(studyweek = 1:26,
+                   Moodchange= bs_func %*% coef_gee,
+                   SE = sqrt(diag(bs_func %*% vcov_gee %*% t(bs_func))))
+
+```
+
+#### A2 + R-WCLS
+
+```{r}
+
+fit_MOOD = geeglm(MOOD_minus ~ I(week_category_new - pn) * (study_week + MOODpred_c), 
+                  id= UserID, weights = weights, data = data, scale.fix = T )
+
+summary(fit_MOOD)
+
+bool_gee = c(F,T,F,F,T,F)
+coef_gee = coef(fit_MOOD)[bool_gee]
+vcov_gee = vcov(fit_MOOD)[bool_gee,bool_gee]
+
+df_a2r = data.frame(studyweek = 1:26,
+                  Moodchange= bs_func %*% coef_gee,
+                  SE = sqrt(diag(bs_func %*% vcov_gee %*% t(bs_func))))
+```
+
+#### Combine together
+
+```{r echo=FALSE}
+df = rbind(df_gee,df_r)
+df$Method = rep(c("WCLS","R-WCLS"), each = 26)
+
+p_mood_r<-ggplot(data=df, aes(x=studyweek, y=Moodchange,colour=Method)) +
+  geom_line()+
+  geom_ribbon(aes(ymin=Moodchange-1.96*SE, ymax=Moodchange+1.96*SE), linetype=2, alpha=0.1)+
+  xlab("Study Week")+
+  ylab("Causal Effect on Mood Scores")+
+  theme_bw()+
+  scale_color_brewer(palette="Paired",direction = -1)+
+  theme(axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  geom_hline(yintercept =0, linetype=2)+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+p_mood_r
+
+
+df = rbind(df_gee,df_dr)
+df$Method = rep(c("WCLS","DR-WCLS"), each = 26)
+
+p_mood_dr<-ggplot(data=df, aes(x=studyweek, y=Moodchange,colour=Method)) +
+  geom_line()+
+  geom_ribbon(aes(ymin=Moodchange-1.96*SE, ymax=Moodchange+1.96*SE), linetype=2, alpha=0.1)+
+  xlab("Study Week")+
+  ylab("Causal Effect on Mood Scores")+
+  theme_bw()+
+  scale_color_brewer(palette="Paired",direction = -1)+
+  theme(axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  geom_hline(yintercept =0, linetype=2)+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+p_mood_dr
+
+df = rbind(df_gee,df_a2r)
+df$Method = rep(c("WCLS","A2 + R-WCLS"), each = 26)
+
+p<-ggplot(data=df, aes(x=studyweek, y=Moodchange,colour=Method)) +
+  geom_line()+
+  geom_ribbon(aes(ymin=Moodchange-1.96*SE, ymax=Moodchange+1.96*SE), linetype=2, alpha=0.1)+
+  xlab("Study Week")+
+  ylab("Causal Effect on Mood Scores")+
+  theme_bw()+
+  scale_color_brewer(palette="Paired",direction = -1)+
+  theme(axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  geom_hline(yintercept =0, linetype=2)+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+p
+
+# df = rbind(df_gee,df_r,df_dr)
+# df_re = data.frame(RE = c(df[1:26,3]^2/df[27:52,3]^2,df[1:26,3]^2/df[53:78,3]^2),
+#                    studyweek = rep(1:26, times =2),
+#                    Method = rep(c("R-WCLS","DR-WCLS"), each = 26))
+# 
+# p_mood<-ggplot(data=df_re, aes(x=studyweek, y=RE,colour=Method)) +
+#   geom_line()+
+#   xlab("Study Week")+
+#   ylab("Relative Efficiency (Mood)")+
+#   theme_bw()+
+#   theme(axis.line = element_line(colour = "black"),
+#         panel.grid.major = element_blank(),
+#         panel.grid.minor = element_blank(),
+#         panel.border = element_blank(),
+#         panel.background = element_blank()) +
+#   geom_hline(yintercept =1, linetype=2)+
+#   theme(axis.text=element_text(size=12),
+#         axis.title=element_text(size=14))
+# p_mood
+
+df = rbind(df_gee,df_r,df_dr)
+df_re = data.frame(RE = df[1:26,3]^2/df[53:78,3]^2,
+                   studyweek = 1:26,
+                   Method = rep("DR-WCLS", each = 26))
+
+p_mood<-ggplot(data=df_re, aes(x=studyweek, y=RE)) +
+  geom_line()+
+  xlab("Study Week")+
+  ylab("Relative Efficiency (Mood)")+
+  theme_bw()+
+  theme(axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  geom_hline(yintercept =1, linetype=2)+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+p_mood
+
+
+df = rbind(df_gee,df_r,df_dr, df_a2r)
+df_re = data.frame(RE = c(df[1:26,3]^2/df[27:52,3]^2,df[1:26,3]^2/df[53:78,3]^2,df[1:26,3]^2/df[79:104,3]^2),
+                   studyweek = rep(1:26, times =3),
+                   Method = rep(c("R-WCLS","DR-WCLS","A2 + R-WCLS"), each = 26))
+
+p<-ggplot(data=df_re, aes(x=studyweek, y=RE,colour=Method)) +
+  geom_line()+
+  xlab("Study Week")+
+  ylab("Relative Efficiency")+
+  theme_bw()+
+  theme(axis.line = element_line(colour = "black"),
+        panel.grid.major = element_blank(),
+        panel.grid.minor = element_blank(),
+        panel.border = element_blank(),
+        panel.background = element_blank()) +
+  geom_hline(yintercept =1, linetype=2)+
+  theme(axis.text=element_text(size=12),
+        axis.title=element_text(size=14))
+p
+
+```
