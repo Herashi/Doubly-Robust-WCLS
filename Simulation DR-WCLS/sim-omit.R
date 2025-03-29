@@ -1,13 +1,9 @@
 setwd("~/Documents/DML-WCLS")
-
-library("foreach")
-library("doParallel")
-library("parallel")
 source("init.R")
-source("group.R")
+
 
 ## set number of Monte Carlo replicates
-M <- 5
+M <- 1000
 
 
 ## set number of threads to use for parallel processing and the random seed

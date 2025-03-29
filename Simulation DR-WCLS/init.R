@@ -1,6 +1,8 @@
 library("geepack")
 library("zoo")
-
+library("foreach")
+library("doParallel")
+library("parallel")
 source("xgeepack.R")
 source("xzoo.R")
 
