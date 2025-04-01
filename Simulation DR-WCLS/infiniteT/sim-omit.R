@@ -1,4 +1,4 @@
-setwd("~/Documents/DML-WCLS")
+setwd("~/Documents/GitHub/DML-WCLS/Simulation DR-WCLS/infiniteT")
 source("init.R")
 
 
@@ -23,8 +23,8 @@ sim.omit <- function() {
   out <- NULL
   ## low, medium and high degrees of moderation by state
   for (b in 0.2) {
-    for (n in 100) {
-      for (tmax in 30) {
+    for (n in 3) {
+      for (tmax in 100) {
         clusterSetRNGStream(cl, seed)
         out <-sim_wc(n, tmax, M, high_d = 20,
                              ## regress response on state and proximal treatment,
@@ -41,7 +41,6 @@ sim.omit <- function() {
                              a.names = c(pn = "Intercept-only"),
                              ## use default generative model, but with the specified
                              ## level of moderation by the time-varying state
-                             group_ls = group,
                              beta0 = c(-0.2, 0, 0, b, 0))
       }
     }
