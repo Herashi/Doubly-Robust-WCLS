@@ -1,15 +1,15 @@
-setwd("~/Documents/DML-WCLS")
+setwd("~/Documents/GitHub/DML-WCLS/Simulation DR-WCLS/infiniteT")
 source("init.R")
 
 
 ## set number of Monte Carlo replicates
-M <- 1000
+M <- 10
 
 
 ## set number of threads to use for parallel processing and the random seed
 ## (nb: these two values ensure that the results are replicable)
 cores <- 4
-seed <- 0
+seed <- 123
 
 cl <- makeCluster(getOption("cl.cores", cores))
 clusterEvalQ(cl, source("init.R"))
@@ -23,18 +23,15 @@ sim.omit <- function() {
   out <- NULL
   ## low, medium and high degrees of moderation by state
   for (b in 0.2) {
-    for (n in 100) {
-      for (tmax in 30) {
+    for (n in 3) {
+      for (tmax in 100) {
         clusterSetRNGStream(cl, seed)
-        out <-
-          rbind(out,
-                cbind(level = paste("$\\beta_{11}^* = ", b, "$", sep = ""),
-                      sim_wc(n, tmax, M, high_d = 20,
+        out <-sim_wc(n, tmax, M, high_d = 20,
                              ## regress response on state and proximal treatment,
                              ## ignoring the underlying interaction between the two
                              y.formula = list(w = as.formula(paste0("y ~ state + I(a - pn) + ", Control_var))),
                              contrast_vec = c(0,0,1, rep(0,high_d)),
-                             y.names = c(w = "Weighted and centered"),
+                             y.names = c(w = "Doubly Robust Large T"),
                              ## term labels for proximal treatment
                              y.label = list(w = "I(a - pn)"),
                              ## specify weights and working correlation structure
@@ -44,8 +41,7 @@ sim.omit <- function() {
                              a.names = c(pn = "Intercept-only"),
                              ## use default generative model, but with the specified
                              ## level of moderation by the time-varying state
-                             group_ls = group,
-                             beta0 = c(-0.2, 0, 0, b, 0))))
+                             beta0 = c(-0.2, 0, 0, b, 0))
       }
     }
   }

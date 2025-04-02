@@ -31,7 +31,7 @@ sim.omit <- function() {
                              ## ignoring the underlying interaction between the two
                              y.formula = list(w = as.formula(paste0("y ~ state + I(a - pn) + ", Control_var))),
                              contrast_vec = c(0,0,1, rep(0,high_d)),
-                             y.names = c(w = "Weighted and centered"),
+                             y.names = c(w = "Doubly Robust WCLS"),
                              ## term labels for proximal treatment
                              y.label = list(w = "I(a - pn)"),
                              ## specify weights and working correlation structure

@@ -4,9 +4,13 @@ library("foreach")
 library("doParallel")
 library("parallel")
 
+
+library(purrr)
+library(Matrix)
+library(MASS)
+library(randomForest)
+library("glmnet")
+
 source("xgeepack.R")
 source("xzoo.R")
-
-#system("R CMD SHLIB rsnmm.c")
-#dyn.load(if (Sys.info()["sysname"] == "Windows") "rsnmm.dll" else "rsnmm.so")
 source("rsnmm.R")
