@@ -24,7 +24,7 @@ sim.omit <- function() {
   ## low, medium and high degrees of moderation by state
   for (b in 0.2) {
     for (n in 3) {
-      for (tmax in 100) {
+      for (tmax in 120) {
         clusterSetRNGStream(cl, seed)
         out <-sim_wc(n, tmax, M, high_d = 20,
                              ## regress response on state and proximal treatment,
