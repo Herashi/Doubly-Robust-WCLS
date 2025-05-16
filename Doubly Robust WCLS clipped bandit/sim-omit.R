@@ -1,4 +1,4 @@
-setwd("~/Documents/GitHub/DML-WCLS/Doubly Robust WCLS with large T")
+setwd("~/Documents/GitHub/DML-WCLS/Doubly Robust WCLS clipped bandit")
 source("init.R")
 
 
@@ -15,7 +15,7 @@ cl <- makeCluster(getOption("cl.cores", cores))
 clusterEvalQ(cl, source("init.R"))
 registerDoParallel(cl)
 
-
+## create time-varying contextual information
 high_d = 20
 Control_var = paste0("Control_var", 1:high_d,collapse = " + ",sep = "")
 
@@ -23,8 +23,10 @@ sim.omit <- function() {
   out <- NULL
   ## low, medium and high degrees of moderation by state
   for (b in 0.2) {
+    ## number of independent individuals
     for (n in 3) {
-      for (tmax in 120) {
+      ## number of time points observed for each individual
+      for (tmax in 150) {
         clusterSetRNGStream(cl, seed)
         out <-sim_wc(n, tmax, M, high_d = 20,
                              ## regress response on state and proximal treatment,
