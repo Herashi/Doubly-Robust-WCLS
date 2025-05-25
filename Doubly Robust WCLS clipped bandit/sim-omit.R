@@ -22,7 +22,7 @@ Control_var = paste0("Control_var", 1:high_d,collapse = " + ",sep = "")
 sim.omit <- function() {
   out <- NULL
   ## low, medium and high degrees of moderation by state
-  for (b in 0.2) {
+  for (b in 0.8) {
     ## number of independent individuals
     for (n in 3) {
       ## number of time points observed for each individual
